@@ -11,6 +11,7 @@ import android.os.AsyncTask;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -24,7 +25,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Formatter;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 
 public class SimpleDynamoProvider extends ContentProvider {
     static final int SERVER_PORT = 10000;
@@ -32,50 +32,36 @@ public class SimpleDynamoProvider extends ContentProvider {
     boolean flag;
     ArrayList<String> hashedList = new ArrayList<String>(Arrays.asList("177ccecaec32c54b82d5aaafc18a2dadb753e3b1", "208f7f72b198dadd244e61801abe1ec3a4857bc9", "33d6357cfaaf0f72991b0ecd8c56da066613c089", "abf0fd8db03e5ecb199a9b82929e9db79b909643", "c25ddd596aa7c81fa12378fa725f706d54325d12"));
     ArrayList<String> list = new ArrayList<String>(Arrays.asList("5562", "5556", "5554", "5558", "5560"));
-    //SQLDatabase sqlDatabase;
     SQLiteDatabase sqLiteDatabase;
-    String[] columns = {"KEY", "VALUE"};
+    String[] columnsinsert = {"KEY", "VALUE", "TIMESTAMP"};
+    String[] columnsquery = {"KEY", "VALUE"};
     String portStr = null;
-    int count = 0;
-    boolean waitingFlag;
-    boolean insertFlag;
+    boolean waitingFlag = false;
     int counter;
 
 
     @Override
     public boolean onCreate() {
         // TODO Auto-generated method stub
-        //String node_id = null;
         counter = 0;
+        File databasePath = getContext().getDatabasePath("SimpleDynamo");
+        if (databasePath.exists()) {
+            waitingFlag = true;
+        }
         SQLDatabase sqlDatabase = new SQLDatabase(getContext());
         sqLiteDatabase = sqlDatabase.getWritableDatabase();
-        //sqlDatabase.onUpgrade(sqLiteDatabase, 0, 1);
-        //sqLiteDatabase.delete("Simple_Dynamo2",null,null);
-        //waitingFlag = true;
         try {
             TelephonyManager tel = (TelephonyManager) this.getContext().getSystemService(Context.TELEPHONY_SERVICE);
             portStr = tel.getLine1Number().substring(tel.getLine1Number().length() - 4);
-            //node_id = genHash(portStr);
-//            if (portStr.equals("5554")) {
-            flag = true;
-//            } else {
-//                flag = false;
-//            }
             ServerSocket serverSocket = new ServerSocket(SERVER_PORT);
             new ServerTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, serverSocket);
-            System.out.println("Oncreate Joined");
             Message message = new Message();
             message.myPort = portStr;
             message.hashedMyPort = genHash(portStr);
             message.type = "JOIN";
-//            message.firstPredecessor = getPredecessor(portStr, 1);
-//            message.secondPredecessor = getPredecessor(portStr, 2);
             message.firstSuccessor = getSuccessor(portStr, 1);
             message.secondSuccessor = getSuccessor(portStr, 2);
-//            System.out.println("Port: " + portStr + " firstpredecessor: " + message.firstPredecessor + " secondpredecessor: " + message.secondPredecessor + " firstsuccessor: " + message.firstSuccessor
-//                    + " secondsuccessor: " + message.secondSuccessor);
             new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message);
-//            }
         } catch (IOException e) {
             Log.e(TAG, "Can't create a ServerSocket");
         } catch (NoSuchAlgorithmException e) {
@@ -86,6 +72,7 @@ public class SimpleDynamoProvider extends ContentProvider {
 
     @Override
     public int delete(Uri uri, String selection, String[] selectionArgs) {
+        System.out.println("At Delete: "+selection);
         // TODO Auto-generated method stub
         Socket socket = null;
         if (selection.equals("\"*\"") || selection.equals("*")) {
@@ -120,7 +107,6 @@ public class SimpleDynamoProvider extends ContentProvider {
                             } else {
                                 message.hashedSenderPort = hashedList.get(j);
                             }
-                            //System.out.println("Portif: " + unHashedPort(message.hashedSenderPort) + " Key: " + message.key + " Value: " + message.value);
                             new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message);
                         }
                         break;
@@ -154,10 +140,8 @@ public class SimpleDynamoProvider extends ContentProvider {
     @Override
     public Uri insert(Uri uri, ContentValues values) {
         // TODO Auto-generated method stub
+        System.out.println("At Insert: "+ values.getAsString("key"));
         try {
-//            while (waitingFlag) {
-//
-//            }
             String key = values.getAsString("key");
             String value = values.getAsString("value");
             String keyHash = genHash(key);
@@ -171,20 +155,17 @@ public class SimpleDynamoProvider extends ContentProvider {
                         message.type = "INSERT";
                         if (j >= hashedList.size()) {
                             message.hashedSenderPort = hashedList.get(j - hashedList.size());
-                            if (unHashedPort(message.hashedSenderPort).equals("5562") && flag) { //
+                            if (unHashedPort(message.hashedSenderPort).equals("5562") && flag) {
                                 Thread.sleep(2000);
                                 flag = false;
-                                //waitingFlag=false;
                             }
                         } else {
                             message.hashedSenderPort = hashedList.get(j);
-                            if (unHashedPort(message.hashedSenderPort).equals("5562") && flag) { //
+                            if (unHashedPort(message.hashedSenderPort).equals("5562") && flag) {
                                 Thread.sleep(2000);
                                 flag = false;
-                                //waitingFlag=false;
                             }
                         }
-                        System.out.println("Portif: " + unHashedPort(message.hashedSenderPort) + " Key: " + message.key + " Value: " + message.value + " " + message.keyHash);
                         new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message);
                     }
                     break;
@@ -198,13 +179,10 @@ public class SimpleDynamoProvider extends ContentProvider {
                         message.value = value;
                         message.type = "INSERT";
                         message.hashedSenderPort = hashedList.get(j);
-                        message.type = "INSERT";
                         if (unHashedPort(message.hashedSenderPort).equals("5562") && flag) { //
                             Thread.sleep(2000);
                             flag = false;
-                            //waitingFlag=false;
                         }
-                        System.out.println("Portelse: " + unHashedPort(message.hashedSenderPort) + " Key: " + message.key + " Value: " + message.value + " " + message.keyHash);
                         new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message);
                     }
 
@@ -238,10 +216,10 @@ public class SimpleDynamoProvider extends ContentProvider {
     public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs,
                         String sortOrder) {
         // TODO Auto-generated method stub
-
-        MatrixCursor cursor = new MatrixCursor(columns);
-        Message message = new Message();
+        System.out.println("At Query: " + selection);
+        MatrixCursor cursor = new MatrixCursor(columnsquery);
         if (selection.equals("\"*\"") || selection.equals("*")) {
+            Message message = new Message();
             Socket socket;
             message.list = list;
             message.hashedList = hashedList;
@@ -260,21 +238,13 @@ public class SimpleDynamoProvider extends ContentProvider {
                     newList.addAll(list1);
                 } catch (Exception e) {
                     e.printStackTrace();
-                    System.out.println("At * query");
                 }
             }
-
             for (String[] s : newList) {
                 cursor.addRow(new Object[]{s[0], s[1]});
             }
-
             return cursor;
         } else if (selection.equals("\"@\"") || selection.equals("@")) {
-
-//            while(waitingFlag)
-//            {
-//
-//            }
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
@@ -282,137 +252,76 @@ public class SimpleDynamoProvider extends ContentProvider {
             }
             SQLDatabase sqlDatabase = new SQLDatabase(getContext());
             SQLiteDatabase sqLiteDatabase = sqlDatabase.getReadableDatabase();
-            return sqLiteDatabase.query(false, SQLDatabase.TABLE_NAME, columns, null, null, null, null, null, null);
+            return sqLiteDatabase.query(false, SQLDatabase.TABLE_NAME, columnsquery, null, null, null, null, null, null);
         } else {
             try {
-//                while (waitingFlag) {
-//
-//                }
-                Thread.sleep(1000);
+                ArrayList<String[]> keyValuesCombined = new ArrayList<String[]>();
                 for (int i = 0; i < hashedList.size() - 1; i++) {
                     if (genHash(selection).compareTo(hashedList.get(i)) > 0 && genHash(selection).compareTo(hashedList.get(i + 1)) <= 0) {
-                        message.type = "QUERY";
-                        message.key = selection;
-                        message.keyHash = genHash(selection);
-                        message.hashedSenderPort = hashedList.get(i + 1);
-                        ArrayList<String[]> keyValues = new ArrayList<String[]>();
-                        try {
-                            keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
-                            //System.out.print("keyvalues null: "+keyValues.size());
-                        } catch (Exception e) {
-                            if (i + 2 <= 4) {
-                                message.hashedSenderPort = hashedList.get(i + 2);
+                        for (int j = i + 1; j <= i + 3; j++) {
+                            ArrayList<String[]> keyValues = new ArrayList<String[]>();
+                            Message message = new Message();
+                            message.type = "QUERY";
+                            message.key = selection;
+                            message.keyHash = genHash(selection);
+                            if (j >= hashedList.size()) {
+                                message.hashedSenderPort = hashedList.get(j - hashedList.size());
                             } else {
-                                message.hashedSenderPort = hashedList.get(i-3);
-                            }
-                            keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
-                            if (keyValues==null || keyValues.size() == 0) {
-                                if (i + 3 <= 4) {
-                                    message.hashedSenderPort = hashedList.get(i + 3);
-                                } else {
-                                    message.hashedSenderPort = hashedList.get(i-2);
-                                }
-                                keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
-                            }
-                            for (String[] s : keyValues) {
-                                System.out.println("Single Exception Query at if: " + s[0] + " " + s[1]);
-                                cursor.addRow(new Object[]{s[0], s[1]});
-                                System.out.println("In exception" + " " + cursor.getCount());
-                            }
-                            return cursor;
-                        }
-                        if (keyValues==null || keyValues.size() == 0)  {
-                            if (i + 2 <= 4) {
-                                message.hashedSenderPort = hashedList.get(i + 2);
-                            } else {
-                                message.hashedSenderPort = hashedList.get(i-3);
-                            }
-                            try {
-                                keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
-                            } catch (Exception e) {
-                                if (i + 3 <= 4) {
-                                    message.hashedSenderPort = hashedList.get(i + 3);
-                                } else {
-                                    message.hashedSenderPort = hashedList.get(i-2);
-                                }
-                                keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
-                                for (String[] s : keyValues) {
-                                    System.out.println("Single Exception Query at if: " + s[0] + " " + s[1]);
-                                    cursor.addRow(new Object[]{s[0], s[1]});
-                                    System.out.println("In exception" + " " + cursor.getCount());
-                                }
-                                return cursor;
-                            }
-                        }
-                        if (keyValues==null || keyValues.size() == 0) {
-                            if (i + 3 <= 4) {
-                                message.hashedSenderPort = hashedList.get(i + 3);
-                            } else {
-                                message.hashedSenderPort = hashedList.get(i-2);
+                                message.hashedSenderPort = hashedList.get(j);
                             }
                             try {
                                 keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
+                            if (keyValues != null && keyValues.size() != 0) {
+                                keyValuesCombined.addAll(keyValues);
+                            }
+
                         }
-                        for (String[] s : keyValues) {
-                            System.out.println("Single Query at if: " + s[0] + " " + s[1]);
-                            cursor.addRow(new Object[]{s[0], s[1]});
+                        int index = 0;
+                        long timestamp = Long.parseLong(keyValuesCombined.get(0)[2]);
+                        for (int k = 1; k < keyValuesCombined.size(); k++) {
+                            if (timestamp < Long.parseLong(keyValuesCombined.get(k)[2])) {
+                                timestamp = Long.parseLong(keyValuesCombined.get(k)[2]);
+                                index = k;
+                            }
                         }
-                        System.out.println(cursor.getCount());
+                        cursor.addRow(new Object[]{keyValuesCombined.get(index)[0], keyValuesCombined.get(index)[1]});
                         return cursor;
+
                     } else if (genHash(selection).compareTo(hashedList.get(hashedList.size() - 1)) > 0 || genHash(selection).compareTo(hashedList.get(0)) == 0 ||
                             genHash(selection).compareTo(hashedList.get(0)) < 0) {
-                        message.hashedSenderPort = hashedList.get(0);
-                        message.type = "QUERY";
-                        message.key = selection;
-                        message.keyHash = genHash(selection);
-                        ArrayList<String[]> keyValues = new ArrayList<String[]>();
-                        try {
-                            keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
-                        } catch (Exception e) {
-                            message.hashedSenderPort = hashedList.get(1);
-                            keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
-                            if (keyValues==null || keyValues.size() == 0) {
-                                message.hashedSenderPort = hashedList.get(2);
-                                keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
-                            }
-                            for (String[] s : keyValues) {
-                                System.out.println("Single Exception Query at elseif: " + s[0] + " " + s[1]);
-                                cursor.addRow(new Object[]{s[0], s[1]});
-                                System.out.println("In exception" + " " + cursor.getCount());
-                            }
-                            return cursor;
-                        }
-                        if (keyValues==null || keyValues.size() == 0) {
-                            message.hashedSenderPort = hashedList.get(1);
+                        for (int j = 0; j <= 2; j++) {
+                            Message message = new Message();
+                            message.hashedSenderPort = hashedList.get(j);
+                            message.type = "QUERY";
+                            message.key = selection;
+                            message.keyHash = genHash(selection);
+                            ArrayList<String[]> keyValues = new ArrayList<String[]>();
                             try {
                                 keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
                             } catch (Exception e) {
-                                message.hashedSenderPort = hashedList.get(2);
-                                keyValues = (ArrayList<String[]>) new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message).get();
-                                for (String[] s : keyValues) {
-                                    System.out.println("Single Exception Query at elseif: " + s[0] + " " + s[1]);
-                                    cursor.addRow(new Object[]{s[0], s[1]});
-                                    System.out.println("In exception" + " " + cursor.getCount());
-                                }
-                                return cursor;
+                                e.printStackTrace();
+                            }
+                            if (keyValues != null && keyValues.size() != 0) {
+                                keyValuesCombined.addAll(keyValues);
+
+                            }
+
+                        }
+                        int index = 0;
+                        long timestamp = Long.parseLong(keyValuesCombined.get(0)[2]);
+                        for (int k = 1; k < keyValuesCombined.size(); k++) {
+                            if (timestamp < Long.parseLong(keyValuesCombined.get(k)[2])) {
+                                timestamp = Long.parseLong(keyValuesCombined.get(k)[2]);
+                                index = k;
                             }
                         }
-                        for (String[] s : keyValues) {
-                            System.out.println("Single Query at elseif: " + s[0] + " " + s[1]);
-                            cursor.addRow(new Object[]{s[0], s[1]});
-                        }
-                        System.out.println(cursor.getCount());
+                        cursor.addRow(new Object[]{keyValuesCombined.get(index)[0], keyValuesCombined.get(index)[1]});
                         return cursor;
-
                     }
                 }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } catch (ExecutionException e) {
-                e.printStackTrace();
             } catch (NoSuchAlgorithmException e) {
                 e.printStackTrace();
             }
@@ -465,61 +374,39 @@ public class SimpleDynamoProvider extends ContentProvider {
                     ObjectInputStream objectInputStream = new ObjectInputStream(socketReceived.getInputStream());
                     Message message = (Message) objectInputStream.readObject();
                     if (message.type.equals("INSERT")) {
-                        insertFlag = true;
-                        // System.out.println("At Insert waiting flag: "+waitingFlag);
                         while (waitingFlag) {
-
                         }
-                        //SQLiteDatabase sqLiteDatabase = sqlDatabase.getWritableDatabase();
-                        // System.out.println("Server: " + unHashedPort(message.hashedSenderPort));
+                        System.out.println("At Insert server");
                         ContentValues values = new ContentValues();
                         values.put(SQLDatabase.KEY, message.key);
                         values.put(SQLDatabase.VALUE, message.value);
-                        System.out.println(" At Server Key: " + message.key + ", Value: " + message.value);
-
-                        if (sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columns, "KEY='" + message.key + "'", null, null, null, null, null).getCount() != 0) {
-//                            System.out.println("Update key: " + message.key + "old value: "
-//                                    + sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columns, "KEY='" + message.key + "'", null, null, null, null, null).getString(1) +
-//                                    " new value: " + message.value);
-                            //sqLiteDatabase.delete(SQLDatabase.TABLE_NAME, "KEY='" + message.key + "'",null);
-                            int rows = sqLiteDatabase.update(SQLDatabase.TABLE_NAME, values, "KEY='" + message.key + "'", null);
-                            System.out.println("Number of rows affected: " + rows);
-                        } else {
-                            System.out.println("Insert key: " + message.key + " Insert value: " + message.value);
-                            long rowid = sqLiteDatabase.insert(SQLDatabase.TABLE_NAME, null, values);
-                            System.out.println("Number of row inserted: " + rowid);
-                        }
-
-                        //sqLiteDatabase.close();
-                        insertFlag = false;
+                        sqLiteDatabase.beginTransaction();
+                        values.put(SQLDatabase.TIMESTAMP, System.currentTimeMillis());
+                        sqLiteDatabase.insert(SQLDatabase.TABLE_NAME, null, values);
+                        sqLiteDatabase.setTransactionSuccessful();
+                        sqLiteDatabase.endTransaction();
                     } else if (message.type.equals("QUERY") || message.type.equals("*QUERY")) {
-                        //System.out.println("At Query waiting flag: "+waitingFlag);
-
-                        while (insertFlag || waitingFlag) {
-
-                        }
+                        System.out.println("At Query server");
                         SQLDatabase sqlDatabase = new SQLDatabase(getContext());
                         SQLiteDatabase sqLiteDatabase = sqlDatabase.getReadableDatabase();
-
                         Cursor cursor;
                         if (message.type.equals("QUERY")) {
-                            cursor = sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columns, "KEY='" + message.key + "'", null, null, null, null, null);
+                            cursor = sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columnsinsert, "KEY='" + message.key + "'", null, null, null, null, null);
                         } else {
-                            cursor = sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columns, null, null, null, null, null, null);
+                            cursor = sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columnsinsert, null, null, null, null, null, null);
 
                         }
                         ArrayList<String[]> keyValues = new ArrayList<String[]>();
                         cursor.moveToFirst();
                         for (cursor.moveToFirst(); !cursor.isAfterLast(); cursor.moveToNext()) {
-                            String temp[] = new String[2];
+                            String temp[] = new String[3];
                             temp[0] = cursor.getString(cursor.getColumnIndex("key"));
                             temp[1] = cursor.getString(cursor.getColumnIndex("value"));
+                            temp[2] = cursor.getString(cursor.getColumnIndex("timestamp"));
                             keyValues.add(temp);
                         }
-
                         ObjectOutputStream objectOutputStream = new ObjectOutputStream(socketReceived.getOutputStream());
                         objectOutputStream.writeObject(keyValues);
-
                     } else if (message.type.equals("*DELETE")) {
                         SQLDatabase sqlDatabase = new SQLDatabase(getContext());
                         SQLiteDatabase sqLiteDatabase = sqlDatabase.getWritableDatabase();
@@ -532,96 +419,60 @@ public class SimpleDynamoProvider extends ContentProvider {
                         SQLDatabase sqlDatabase = new SQLDatabase(getContext());
                         SQLiteDatabase sqLiteDatabase = sqlDatabase.getReadableDatabase();
                         Cursor cursor;
-                        cursor = sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columns, null, null, null, null, null, null);
-                        System.out.println("At Server: " + message.senderPort);
-                        //ArrayList<String[]> keyValues = new ArrayList<String[]>();
-                        //ArrayList<String[]> keyValues = new ArrayList<String[]>();
-                        if (cursor.getCount() == 0) {
-//                            waitingFlag = false;
-//                            message.type = "null";
-//                            publishProgress(message);
-                        } else {
-                            message.type = "JOINED";
-                            flag = true;
-                            cursor.moveToFirst();
-                            for (cursor.moveToFirst(); !cursor.isAfterLast(); cursor.moveToNext()) {
-                                String temp[] = new String[2];
-                                temp[0] = cursor.getString(cursor.getColumnIndex("key"));
-                                temp[1] = cursor.getString(cursor.getColumnIndex("value"));
-                                String genHashKey = genHash(temp[0]);
-                                System.out.println("Key: " + temp[0] + " Value: " + temp[1]);
-                                System.out.println("keyhash:" + genHashKey);
-                                System.out.println("myporthashmessage:" + message.hashedSenderPort);
-                                System.out.println("secondprede:" + genHash(getPredecessor(message.senderPort, 2)));
-                                System.out.println("firstprede:" + genHash(getPredecessor(message.senderPort, 1)));
-                                System.out.println("myport:" + message.senderPort);
-                                System.out.println("myporthash:" + genHash(message.senderPort));
-                                System.out.println("Failed Port: " + message.myPort);
-                                if (message.firstSuccessor.equals(message.senderPort)) {
-                                    System.out.println("check if failed port");
-                                    if (getPredecessor(message.senderPort, 1).equals("5562")) {
-                                        if (genHashKey.compareTo(genHash("5560")) > 0 || genHashKey.compareTo(genHash("5562")) <= 0) {
-                                            System.out.println("Own key");
-                                            message.keyValues.add(temp);
-                                        }
-                                    } else {
-                                        if (genHashKey.compareTo(genHash(getPredecessor(message.senderPort, 2))) > 0 && genHashKey.compareTo(genHash(getPredecessor(message.senderPort, 1))) <= 0) {
-                                            System.out.println("Own key");
-                                            message.keyValues.add(temp);
-                                        }
+                        cursor = sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columnsquery, null, null, null, null, null, null);
+                        message.type = "JOINED";
+                        cursor.moveToFirst();
+                        String p1 = genHash(getPredecessor(message.senderPort, 1));
+                        String p2 = genHash(getPredecessor(message.senderPort, 2));
+                        for (cursor.moveToFirst(); !cursor.isAfterLast(); cursor.moveToNext()) {
+                            String temp[] = new String[2];
+                            temp[0] = cursor.getString(cursor.getColumnIndex("key"));
+                            temp[1] = cursor.getString(cursor.getColumnIndex("value"));
+                            String genHashKey = genHash(temp[0]);
+                            if (message.firstSuccessor.equals(message.senderPort)) {
+                                if (getPredecessor(message.senderPort, 1).equals("5562")) {
+                                    if (genHashKey.compareTo("c25ddd596aa7c81fa12378fa725f706d54325d12") > 0 || genHashKey.compareTo("177ccecaec32c54b82d5aaafc18a2dadb753e3b1") <= 0) {
+                                        message.keyValues.add(temp);
                                     }
-
                                 } else {
-                                    System.out.println("check else failed port");
-                                    if (message.senderPort.equals("5562")) {
-                                        if (genHashKey.compareTo(genHash("5560")) > 0 || genHashKey.compareTo(genHash("5562")) <= 0) {
-                                            System.out.println("neighbors keys zero");
-                                            message.keyValues.add(temp);
-                                        }
-                                    } else {
-                                        if (genHashKey.compareTo(genHash(getPredecessor(message.senderPort, 1))) > 0 && genHashKey.compareTo(message.hashedSenderPort) <= 0) {
-                                            System.out.println("neighbors keys");
-                                            message.keyValues.add(temp);
-                                        }
+                                    if (genHashKey.compareTo(p2) > 0 && genHashKey.compareTo(p1) <= 0) {
+                                        message.keyValues.add(temp);
                                     }
-
                                 }
+                            } else {
+                                if (message.senderPort.equals("5562")) {
+                                    if (genHashKey.compareTo("c25ddd596aa7c81fa12378fa725f706d54325d12") > 0 || genHashKey.compareTo("177ccecaec32c54b82d5aaafc18a2dadb753e3b1") <= 0) {
+                                        message.keyValues.add(temp);
+                                    }
+                                } else {
+                                    if (genHashKey.compareTo(p1) > 0 && genHashKey.compareTo(message.hashedSenderPort) <= 0) {
+                                        message.keyValues.add(temp);
+                                    }
+                                }
+
                             }
-                            publishProgress(message);
                         }
-//                        ObjectOutputStream objectOutputStream = new ObjectOutputStream(socketReceived.getOutputStream());
-//                        objectOutputStream.writeObject(keyValues);
+                        publishProgress(message);
                     } else if (message.type.equals("JOINED")) {
-                        waitingFlag = true;
+                        //waitingFlag = true;
                         SQLDatabase sqlDatabase = new SQLDatabase(getContext());
-                        SQLiteDatabase sqLiteDatabase = sqlDatabase.getWritableDatabase();
-                        System.out.println("Belongs to: " + message.senderPort + " Stored at: " + message.myPort);
+                        sqLiteDatabase = sqlDatabase.getWritableDatabase();
                         ContentValues values = new ContentValues();
+                        sqLiteDatabase.beginTransaction();
                         for (String s[] : message.keyValues) {
-                            System.out.println("Key: " + s[0] + ", Value: " + s[1] + "Hash of key: " + genHash(s[0]));
                             values.put(SQLDatabase.KEY, s[0]);
                             values.put(SQLDatabase.VALUE, s[1]);
-                            if (sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columns, "KEY='" + s[0] + "'", null, null, null, null, null).getCount() != 0) {
-                                System.out.println("Update key: " + s[0] + " Insert value: " + s[1]);
-                                int rows = sqLiteDatabase.update(SQLDatabase.TABLE_NAME, values, "KEY='" + s[0] + "'", null);
-                                System.out.println("Number of rows affected: " + rows);
+
+                            if (sqLiteDatabase.query(true, SQLDatabase.TABLE_NAME, columnsquery, "KEY='" + s[0] + "' and VALUE= '" + s[1] + "'", null, null, null, null, null).getCount() != 0) {
                             } else {
-                                System.out.println("Insert key: " + s[0] + " Insert value: " + s[1]);
-                                long rowid = sqLiteDatabase.insert(SQLDatabase.TABLE_NAME, null, values);
-                                System.out.println("Number of row inserted: " + rowid);
+                                values.put(SQLDatabase.TIMESTAMP, System.currentTimeMillis());
+                                sqLiteDatabase.insert(SQLDatabase.TABLE_NAME, null, values);
                             }
-//                            sqLiteDatabase.insert(SQLDatabase.TABLE_NAME, null, values);
                         }
+                        sqLiteDatabase.setTransactionSuccessful();
+                        sqLiteDatabase.endTransaction();
                     }
-                    waitingFlag = false;
-//                    } else if (message.type.equals("null")) {
-//                        counter+=1;
-//                        System.out.println("counter: "+counter);
-//                        if (counter == 3 || message.myPort.equals("5562")) {
-//                            waitingFlag = false;
-//
-//                        }
-//                    }
+
                 } catch (IOException e) {
                     e.printStackTrace();
                     Log.e(TAG, "File write failed");
@@ -635,15 +486,9 @@ public class SimpleDynamoProvider extends ContentProvider {
 
         protected void onProgressUpdate(Message... message) {
             try {
-                if (message[0].type.equals("INSERT REPLY")) {
-                    //System.out.println("senderport at publishprigress: " + unHashedPort(message[0].hashedSenderPort));
-                    new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message[0]);
-                } else if (message[0].type.equals("JOINED")) {
+                if (message[0].type.equals("JOINED") || message[0].type.equals("null")) {
                     new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message[0]);
                 }
-//                else if (message[0].type.equals("null")) {
-//                    new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message[0]);
-//                }
             } catch (Exception e) {
                 Log.e(TAG, "File write failed");
             }
@@ -660,10 +505,8 @@ public class SimpleDynamoProvider extends ContentProvider {
                 ObjectInputStream objectInputStream;
                 Socket socket;
                 if (msgs[0].type.equals("INSERT")) {
-                    //System.out.println("Client: " + unHashedPort(msgs[0].hashedSenderPort));
                     port = unHashedPort(msgs[0].hashedSenderPort);
                     socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(unHashedPort(msgs[0].hashedSenderPort)) * 2);
-                    //socket.setSoTimeout(2000);
                     ObjectOutputStream objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
                     objectOutputStream.writeObject(msgs[0]);
                 } else if (msgs[0].type.equals("JOIN")) {
@@ -673,43 +516,19 @@ public class SimpleDynamoProvider extends ContentProvider {
                             } else {
                                 msgs[0].senderPort = s;
                                 msgs[0].hashedSenderPort = genHash(s);
-                                System.out.println("At Client: " + msgs[0].senderPort);
                                 socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(msgs[0].senderPort) * 2);
                                 ObjectOutputStream objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
                                 objectOutputStream.writeObject(msgs[0]);
                             }
                         } catch (IOException e) {
                             Log.e(TAG, "ClientTask socket IOException");
-                            System.out.println("Couldnt find port: " + s);
-                            // waitingFlag=false;
                         }
                     }
+                    waitingFlag = false;
                 } else if (msgs[0].type.equals("JOINED")) {
                     socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(msgs[0].myPort) * 2);
                     ObjectOutputStream objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
                     objectOutputStream.writeObject(msgs[0]);
-                }
-//                else if (msgs[0].type.equals("null")) {
-//                    socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(msgs[0].myPort) * 2);
-//                    ObjectOutputStream objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
-//                    objectOutputStream.writeObject(msgs[0]);
-//                }
-                else if (msgs[0].type.equals("INSERT REPLY")) {
-//                    msgs[0].senderPort = unHashedPort(msgs[0].hashedSenderPort);
-                    for (int i = msgs[0].index; i <= msgs[0].index + 2; i++) {
-                        if (i >= hashedList.size()) {
-                            msgs[0].hashedSenderPort = hashedList.get(hashedList.size() - i);
-                            msgs[0].senderPort = unHashedPort(msgs[0].hashedSenderPort);
-                            //System.out.println("senderport at client: " + msgs[0].senderPort + " " + msgs[0].key);
-                        } else {
-                            msgs[0].hashedSenderPort = hashedList.get(i);
-                            msgs[0].senderPort = unHashedPort(msgs[0].hashedSenderPort);
-                            //System.out.println("senderport at client: " + msgs[0].senderPort + " " + msgs[0].key);
-                        }
-                        socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(msgs[0].senderPort) * 2);
-                        ObjectOutputStream objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
-                        objectOutputStream.writeObject(msgs[0]);
-                    }
                 } else if (msgs[0].type.equals("QUERY")) {
                     msgs[0].senderPort = unHashedPort(msgs[0].hashedSenderPort);
                     socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(msgs[0].senderPort) * 2);
@@ -725,9 +544,6 @@ public class SimpleDynamoProvider extends ContentProvider {
                 }
             } catch (IOException e) {
                 Log.e(TAG, "ClientTask socket IOException");
-                // list.remove(port);
-                System.out.println("At IO exception removed port: " + port);
-                // System.out.println("List Size after failure: " + list.size());
             } catch (ClassNotFoundException e) {
                 e.printStackTrace();
             } catch (NoSuchAlgorithmException e) {
@@ -751,12 +567,9 @@ class Message implements Serializable {
     String value;
     String firstSuccessor;
     String secondSuccessor;
-    //    String firstPredecessor;
-//    String secondPredecessor;
     int index;
     ArrayList<String> list = new ArrayList<String>();
     ArrayList<String> hashedList = new ArrayList<String>();
     ArrayList<String[]> keyValues = new ArrayList<String[]>();
 }
-
 
